@@ -30,6 +30,7 @@ const MusicPlayer = ({ audioUrl }) => {
     // Load audio source when audioUrl changes
     useEffect(() => {
         if (audioUrl) {
+            pause();
             loadSource(audioUrl).then(() => play());
         }
     }, [audioUrl]);

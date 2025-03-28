@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import MusicPlayer from "../components/MusicPlayer";
+import MusicList from "../components/MusicList";
 
 export default function Home() {
     const [audioUrl, setAudioUrl] = useState(null);
     const [videoId, setVideoId] = useState("");
+    const [reloadList, setReloadList] = useState(false);
     const [videoDetails, setVideoDetails] = useState({ title: "", artist: "" }); // Title and artist state
-
 
     const extractVideoId = (url) => {
         const regex = /(?:\?v=|\/embed\/|\/v\/|\/watch\?v=|&v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
@@ -51,7 +52,9 @@ export default function Home() {
             });
 
             if (response.ok) {
+                setReloadList(!reloadList);
                 alert("Music data submitted successfully!");
+
             } else {
                 alert("Failed to submit music data.");
             }
@@ -117,6 +120,7 @@ export default function Home() {
             </div>
 
             <MusicPlayer audioUrl={audioUrl}/>
+            <MusicList audioUrl={audioUrl} setAudioUrl={setAudioUrl} reloadFlag={reloadList}/>
             <button onClick={() => setAudioUrl(prompt("Enter Audio Url"))}>
                 Load Song
             </button>
