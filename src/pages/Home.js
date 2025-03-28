@@ -1,11 +1,14 @@
 import { useEffect, useState, useRef } from 'react';
 import MusicPlayer from "../components/MusicPlayer";
 import MusicList from "../components/MusicList";
+import RealTimeUpdates from "../components/RealTimeUpdates";
 
 export default function Home() {
     const [audioUrl, setAudioUrl] = useState(null);
     const [videoId, setVideoId] = useState("");
     const [reloadList, setReloadList] = useState(false);
+    const [trigger, setTrigger] = useState(false);
+    const [updates, setUpdates] = useState([]);
     const [videoDetails, setVideoDetails] = useState({ title: "", artist: "" }); // Title and artist state
 
     const extractVideoId = (url) => {
@@ -37,6 +40,7 @@ export default function Home() {
             return;
         }
         console.log(videoDetails)
+        setUpdates(["Starting save operation."])
 
         try {
             const response = await fetch("http://localhost:8083/musics", {
@@ -50,6 +54,7 @@ export default function Home() {
                     artist: videoDetails.artist,
                 }),
             });
+            setTrigger(!trigger);
 
             if (response.ok) {
                 setReloadList(!reloadList);
@@ -118,6 +123,7 @@ export default function Home() {
                 >Save this song
                 </button>
             </div>
+            <RealTimeUpdates trigger={trigger} updates={updates} setUpdates={setUpdates}/>
 
             <MusicPlayer audioUrl={audioUrl}/>
             <MusicList audioUrl={audioUrl} setAudioUrl={setAudioUrl} reloadFlag={reloadList}/>

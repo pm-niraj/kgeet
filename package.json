@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@stomp/stompjs": "^7.1.0",
     "@tailwindcss/vite": "^4.0.4",
     "cra-template": "1.2.0",
     "fluent-ffmpeg": "^2.1.3",
@@ -11,6 +12,7 @@
     "react-dom": "^19.0.0",
     "react-icons": "^5.4.0",
     "react-scripts": "5.0.1",
+    "sockjs-client": "^1.6.1",
     "soundtouchjs": "^0.1.30",
     "tailwindcss": "^4.0.4",
     "vite": "^6.1.0"
