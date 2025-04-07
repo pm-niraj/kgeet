@@ -20,7 +20,7 @@ const MusicList = ({audioUrl, setAudioUrl, reloadFlag}) => {
 
     // Handle the click on a song title to change the audio URL
     const handleSongClick = (audioUrl) => {
-        setAudioUrl(`http://localhost:8083/uploads/${audioUrl}`); // Update audio URL with the selected song
+        setAudioUrl(audioUrl); // Update audio URL with the selected song
     };
 
     return (

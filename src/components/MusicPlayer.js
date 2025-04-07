@@ -1,99 +1,27 @@
-import { useEffect, useState, useRef } from 'react';
-import { FaPlay, FaPause, FaStepBackward, FaStepForward, FaVolumeUp, FaVolumeDown, FaVolumeMute, FaPlus, FaMinus } from "react-icons/fa";
-import { PitchShifter } from 'soundtouchjs';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+    FaPlay, FaPause, FaVolumeUp, FaVolumeDown,
+    FaVolumeMute, FaPlus, FaMinus
+} from 'react-icons/fa';
 
 const MusicPlayer = ({ audioUrl }) => {
-    const audioCtxRef = useRef(null);
-    const gainNodeRef = useRef(null);
-    const shifterRef = useRef(null);
+    const audioRef = useRef(null);
+    const mediaSourceRef = useRef(null);
+    const sourceBufferRef = useRef(null);
+    const queueRef = useRef([]);
     const progressRef = useRef(null);
+    const totalAudioBytes = useRef(null);
+    const fetchOffset = useRef(0);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [volume, setVolume] = useState(5);
     const [beforeMuteVol, setBeforeMuteVol] = useState(5);
-    const [tempo, setTempo] = useState(1.0);
-    const [pitch, setPitch] = useState(1.0);
-    const [key, setKey] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [hoverTime, setHoverTime] = useState(null);
     const [hoverX, setHoverX] = useState(0);
 
-    // Initialize AudioContext and load default audio on mount
-    useEffect(() => {
-        if (!audioCtxRef.current) {
-            audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-            gainNodeRef.current = audioCtxRef.current.createGain();
-        }
-    }, []);
-
-    // Load audio source when audioUrl changes
-    useEffect(() => {
-        if (audioUrl) {
-            pause();
-            loadSource(audioUrl).then(() => play());
-        }
-    }, [audioUrl]);
-
-    const loadSource = async (url) => {
-        try {
-            const response = await fetch(url);
-            const buffer = await response.arrayBuffer();
-            const audioBuffer = await audioCtxRef.current.decodeAudioData(buffer);
-
-            const newShifter = new PitchShifter(audioCtxRef.current, audioBuffer, 16384);
-            newShifter.tempo = tempo;
-            newShifter.pitch = pitch;
-
-            shifterRef.current = newShifter;
-            setDuration(audioBuffer.duration);
-        } catch (error) {
-            console.error('Error loading audio:', error);
-        }
-    };
-
-    const play = () => {
-        if (shifterRef.current) {
-            shifterRef.current.connect(gainNodeRef.current);
-            gainNodeRef.current.connect(audioCtxRef.current.destination);
-            audioCtxRef.current.resume().then(() => {
-                setIsPlaying(true);
-                trackPlayback();
-            });
-        }
-    };
-
-    const pause = () => {
-        if (shifterRef.current) {
-            shifterRef.current.disconnect();
-            setIsPlaying(false);
-        }
-    };
-
-    const trackPlayback = () => {
-        const updateTime = () => {
-            if (shifterRef.current && isPlaying) {
-                setCurrentTime(shifterRef.current.timePlayed || 0);
-                requestAnimationFrame(updateTime);
-            }
-        };
-        requestAnimationFrame(updateTime);
-    };
-
-    useEffect(() => {
-        if (shifterRef.current) {
-            shifterRef.current.tempo = tempo;
-            shifterRef.current.pitch = pitch;
-            shifterRef.current.pitchSemitones = key;
-            gainNodeRef.current.gain.value = volume / 10;
-        }
-    }, [tempo, pitch, key, volume]);
-
-    useEffect(() => {
-        if (shifterRef.current) {
-            isPlaying ? play() : pause();
-        }
-    }, [isPlaying]);
+    const chunkSize = 1024 * 512; // 512 KB
 
     const formatTime = (seconds) => {
         const min = Math.floor(seconds / 60);
@@ -101,27 +29,149 @@ const MusicPlayer = ({ audioUrl }) => {
         return `${min}:${sec < 10 ? '0' : ''}${sec}`;
     };
 
-    const handleProgressClick = (e) => {
-        if (!shifterRef.current || !progressRef.current) return;
-        const rect = progressRef.current.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const newTime = (clickX / rect.width) * duration;
-        shifterRef.current.percentagePlayed = newTime / duration;
-        trackPlayback();
+    // Fetch duration from `/audio_length/audioUrl`
+    const fetchTotalBytes = async (url) => {
+        try {
+            const res = await fetch(`http://localhost:8083/audio_length/${(url)}`);
+            const data = await res.text();
+            console.log(data)
+            return parseInt(data, 10);
+        } catch (err) {
+            console.error('Error fetching duration:', err);
+            return 0;
+        }
     };
 
-    const handleMouseMove = (e) => {
-        if (!progressRef.current) return;
-        const rect = progressRef.current.getBoundingClientRect();
-        const hoverX = e.clientX - rect.left;
-        const hoverTime = (hoverX / rect.width) * duration;
-        setHoverTime(hoverTime);
-        setHoverX(hoverX);
+
+    const fetchDuration = async (url) => {
+        try {
+            const res = await fetch(`http://localhost:8083/duration/${(url)}`);
+            const data = await res.text();
+            console.log(data)
+            return parseFloat(data);
+        } catch (err) {
+            console.error('Error fetching duration:', err);
+            return 0;
+        }
     };
 
-    const handleMouseLeave = () => {
-        setHoverTime(null);
+    // Setup MediaSource on audioUrl change
+    useEffect(() => {
+        if (!audioUrl) return;
+        console.log(audioUrl)
+
+        pause();
+        if (audioRef.current) {
+            audioRef.current.src = '';
+        }
+
+        (async () => {
+            totalAudioBytes.current = await fetchTotalBytes(audioUrl);
+            setDuration(await fetchDuration(audioUrl))
+            setCurrentTime(0);
+            fetchOffset.current = 0;
+            queueRef.current = [];
+
+            const mediaSource = new MediaSource();
+            mediaSourceRef.current = mediaSource;
+
+            audioRef.current.src = URL.createObjectURL(mediaSource);
+
+            mediaSource.addEventListener('sourceopen', () => {
+                initMediaBuffer(audioUrl).then(play);
+            });
+        })();
+    }, [audioUrl]);
+
+    const initMediaBuffer = async (url) => {
+        const mimeCodec = 'audio/mpeg';
+        const mediaSource = mediaSourceRef.current;
+
+        if (mediaSource && MediaSource.isTypeSupported(mimeCodec)) {
+            const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
+            sourceBuffer.mode = 'sequence';
+            sourceBufferRef.current = sourceBuffer;
+
+            //Whenever updateend is done -> Current buffer is updated, this event gets fired non stop
+            sourceBuffer.addEventListener('updateend', () => {
+                if (!sourceBuffer.updating && queueRef.current.length > 0) {
+                    sourceBuffer.appendBuffer(queueRef.current.shift());
+                } else if (!sourceBuffer.updating && fetchOffset.current < totalAudioBytes.current) {
+                    loadNextChunk(url);
+                }
+            });
+
+            loadNextChunk(url);
+        } else {
+            console.error('Unsupported MIME type or codec:', mimeCodec);
+        }
     };
+
+
+    const loadNextChunk = async (url) => {
+        if(!totalAudioBytes.current)
+            await fetchTotalBytes(url);
+        const start = fetchOffset.current;
+        const end = Math.min(start + chunkSize - 1, totalAudioBytes.current - 1); // prevent overflow
+
+        try {
+            const res = await fetch(`http://localhost:8083/serve/${(url)}`, {
+                headers: { Range: `bytes=${start}-${end}` },
+            });
+            console.log(`bytes=${start}-${end}`)
+
+            if (!res.ok || res.status === 416) {
+                // Wait until SourceBuffer is done updating
+                const tryEndStream = () => {
+                    if (!sourceBufferRef.current.updating) {
+                        mediaSourceRef.current.endOfStream();
+                    } else {
+                        // Try again shortly
+                        setTimeout(tryEndStream, 50);
+                    }
+                };
+                tryEndStream();
+                return;
+            }
+
+            const chunk = await res.arrayBuffer();
+            queueRef.current.push(chunk);
+            fetchOffset.current = end + 1;
+
+            if (!sourceBufferRef.current.updating) {
+                sourceBufferRef.current.appendBuffer(queueRef.current.shift());
+            }
+
+
+        } catch (err) {
+            console.error('Error loading audio chunk:', err);
+        }
+    };
+
+    const play = () => {
+        audioRef.current?.play();
+        setIsPlaying(true);
+    };
+
+    const pause = () => {
+        audioRef.current?.pause();
+        setIsPlaying(false);
+    };
+
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+        audio.addEventListener('timeupdate', handleTimeUpdate);
+        return () => audio.removeEventListener('timeupdate', handleTimeUpdate);
+    }, []);
+
+    useEffect(() => {
+        if (audioRef.current) {
+            audioRef.current.volume = volume / 10;
+        }
+    }, [volume]);
 
     const toggleMute = () => {
         if (volume > 0) {
@@ -132,19 +182,44 @@ const MusicPlayer = ({ audioUrl }) => {
         }
     };
 
+    const handleProgressClick = (e) => {
+        if (!audioRef.current || !progressRef.current || !duration) return;
+        const rect = progressRef.current.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const newTime = (clickX / rect.width) * duration;
+        audioRef.current.currentTime = newTime;
+    };
+
+    const handleMouseMove = (e) => {
+        if (!progressRef.current) return;
+        const rect = progressRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const time = (x / rect.width) * duration;
+        setHoverTime(time);
+        setHoverX(x);
+    };
+
+    const handleMouseLeave = () => {
+        setHoverTime(null);
+    };
+
     return (
         <div className="flex flex-col items-center bg-gray-800 text-white p-4 rounded-2xl shadow-lg w-96">
             <h2 className="text-lg font-semibold mb-2">Now Playing</h2>
             <div className="bg-gray-700 w-full h-36 rounded-lg flex items-center justify-center mb-4">
                 <span className="text-sm">Album Art</span>
             </div>
+
+            <audio ref={audioRef} preload="auto" />
+
             <div className="flex items-center gap-4 mb-2">
                 {isPlaying ? (
-                    <FaPause className="text-3xl cursor-pointer hover:text-gray-400" onClick={() => setIsPlaying(false)} />
+                    <FaPause className="text-3xl cursor-pointer hover:text-gray-400" onClick={pause} />
                 ) : (
-                    <FaPlay className="text-3xl cursor-pointer hover:text-gray-400" onClick={() => setIsPlaying(true)} />
+                    <FaPlay className="text-3xl cursor-pointer hover:text-gray-400" onClick={play} />
                 )}
             </div>
+
             <div
                 className="progress w-full mb-2 relative"
                 ref={progressRef}
@@ -158,11 +233,15 @@ const MusicPlayer = ({ audioUrl }) => {
                 </div>
                 <progress value={(currentTime / duration) * 100} max="100" className="w-full cursor-pointer"></progress>
                 {hoverTime !== null && (
-                    <div className="absolute bottom-6 text-xs bg-gray-700 px-2 py-1 rounded" style={{ left: `${hoverX}px`, transform: 'translateX(-50%)' }}>
+                    <div
+                        className="absolute bottom-6 text-xs bg-gray-700 px-2 py-1 rounded"
+                        style={{ left: `${hoverX}px`, transform: 'translateX(-50%)' }}
+                    >
                         {formatTime(hoverTime)}
                     </div>
                 )}
             </div>
+
             <div className="flex items-center gap-2 mb-2">
                 <label>Volume: {volume}</label>
                 <FaMinus onClick={() => setVolume(Math.max(0, volume - 1))} />
