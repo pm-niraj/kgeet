@@ -13,7 +13,7 @@ const MusicPlayer = ({ audioUrl }) => {
     const totalAudioBytes = useRef(0);
     const fetchOffset = useRef(0);
     const currentTime = useRef(0);
-    const duration = useRef(0);
+    const duration = useRef(1);
     const stopRunning = useRef(false);
 
     const [isPlaying, setIsPlaying] = useState(false);

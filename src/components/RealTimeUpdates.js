@@ -1,42 +1,32 @@
 import React, { useEffect, useState } from "react";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
+import SocketBroker from "../utilities/SocketBroker";
 
-const RealTimeUpdates = ({trigger, updates, setUpdates}) => {
+const RealTimeUpdates = ({updates, setUpdates}) => {
 
     useEffect(() => {
-        //When trigger has been pulled by the button
-        // Connect to WebSocket server
-        const socket = new SockJS("http://localhost:8083/ws"); // WebSocket endpoint
-        const stompClient = new Client({
-            webSocketFactory: () => socket,
-            debug: (msg) => console.log(msg),
-            onConnect: () => {
-                console.log("Connected to WebSocket");
-                stompClient.subscribe("/topic/song-updates", (message) => {
-                    const update = JSON.parse(message.body);
-
-                    if (Object.hasOwn(update, "downloaded")) {
-                        setUpdates((prevUpdates) => {
-                            // Remove the last entry and prepend the new value
-                            const updatedList = [...prevUpdates];
-                            updatedList.pop(); // Safely remove the last item
-                            return [update.downloaded];
-                        });
-                    } else {
-                        setUpdates((prevUpdates) => [update.message, ...prevUpdates]);
-                    }
+        const socketBroker = new SocketBroker("http://localhost:8083/ws", "/topic/song-updates")
+        const handleMessage = (message) => {
+            const update = JSON.parse(message.body);
+            if (Object.hasOwn(update, "downloaded")) {
+                setUpdates((prevUpdates) => {
+                    // Remove the last entry and prepend the new value
+                    const updatedList = [...prevUpdates];
+                    updatedList.pop(); // Safely remove the last item
+                    return [update.downloaded];
                 });
-            },
-            onDisconnect: () => console.log("Disconnected from WebSocket"),
-        });
-
-        stompClient.activate();
-
+            } else {
+                setUpdates((prevUpdates) => [update.message, ...prevUpdates]);
+            }
+        }
+        socketBroker.tryManageMessage(handleMessage)
+        socketBroker.startSubscribing()
+        // Return in useEffect -> Means when component is unmounting => page closed/changed
         return () => {
-            stompClient.deactivate();
+            socketBroker.stopConnection();
         };
-    }, [trigger]);
+    }, []);
 
     return (
         <div className="max-w-xl mx-auto mt-10 p-6 bg-white rounded-xl shadow-lg space-y-4">
