@@ -8,16 +8,26 @@ export default function Home() {
     const [audioUrl, setAudioUrl] = useState("");
     const [reloadList, setReloadList] = useState(false);
     const [updates, setUpdates] = useState([]);
+    const [nextTrigger, setNextTrigger] = useState(false)
+    const [prevTrigger, setPrevTrigger] = useState(false)
 
 
     return (
         <div>
-            <SongPersister changeReloadList={() => setReloadList(!reloadList)}
+            <SongPersister changeReloadList={() => setReloadList(prev=>!prev)}
                            setUpdates={setUpdates}/>
             <RealTimeUpdates updates={updates} setUpdates={setUpdates}/>
 
-            <MusicPlayer audioUrl={audioUrl}/>
-            <MusicList audioUrl={audioUrl} setAudioUrl={setAudioUrl} reloadFlag={reloadList}/>
+            <MusicPlayer audioUrl={audioUrl}
+                         setNext={() => {setNextTrigger(prev => !prev)}}
+                         setPrev={()=>{setPrevTrigger(prev => !prev)}}
+            />
+            <MusicList audioUrl={audioUrl}
+                       setAudioUrl={setAudioUrl}
+                       reloadFlag={reloadList}
+                       nextTrigger={nextTrigger}
+                       previousTrigger={prevTrigger}
+            />
             <button onClick={() => setAudioUrl(prompt("Enter Audio Url"))}>
                 Load Song
             </button>
