@@ -18,16 +18,18 @@ export default function Home() {
                            setUpdates={setUpdates}/>
             <RealTimeUpdates updates={updates} setUpdates={setUpdates}/>
 
-            <MusicPlayer audioUrl={audioUrl}
-                         setNext={() => {setNextTrigger(prev => !prev)}}
-                         setPrev={()=>{setPrevTrigger(prev => !prev)}}
-            />
-            <MusicList audioUrl={audioUrl}
-                       setAudioUrl={setAudioUrl}
-                       reloadFlag={reloadList}
-                       nextTrigger={nextTrigger}
-                       previousTrigger={prevTrigger}
-            />
+            <div className="flex">
+                <MusicPlayer audioUrl={audioUrl}
+                             setNext={() => {setNextTrigger(prev => !prev)}}
+                             setPrev={()=>{setPrevTrigger(prev => !prev)}}
+                />
+                <MusicList audioUrl={audioUrl}
+                           setAudioUrl={setAudioUrl}
+                           reloadFlag={reloadList}
+                           nextTrigger={nextTrigger}
+                           previousTrigger={prevTrigger}
+                />
+            </div>
             <button onClick={() => setAudioUrl(prompt("Enter Audio Url"))}>
                 Load Song
             </button>

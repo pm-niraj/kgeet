@@ -42,15 +42,15 @@ const MusicList = ({audioUrl, setAudioUrl, reloadFlag, nextTrigger, previousTrig
     };
 
     return (
-        <div className="flex flex-col items-center p-4">
+        <div className="items-center p-4 w-3/4">
             {/* List of Songs */}
-            <div className="w-full max-w-md mb-4">
+            <div className="w-full mb-4">
                 <h2 className="text-xl font-bold mb-4">Songs List</h2>
                 <ul className="list-none">
                     {songs?.map((song, index) => (
                         <li
                             key={index}
-                            className="cursor-pointer text-blue-500 hover:text-blue-700"
+                            className={"cursor-pointer hover:text-red-500 p-1"+(index === currentSong ? " bg-red-700 text-white" : " text-blue-500")}
                             onClick={() => {
                                 handleSongClick(song.audioUrl)
                                 setCurrentSong(index)

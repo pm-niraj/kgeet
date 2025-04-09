@@ -294,7 +294,7 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
     };
 
     return (
-        <div className="flex flex-col items-center bg-gray-800 text-white p-4 rounded-2xl shadow-lg w-96">
+        <div className="w-14 h-1/3 flex-none flex flex-col items-center bg-gray-800 text-white p-4 rounded-2xl shadow-lg w-96">
             <h2 className="text-lg font-semibold mb-2">Now Playing</h2>
             <div className="bg-gray-700 w-full h-36 rounded-lg flex items-center justify-center mb-4">
                 <span className="text-sm">Album Art</span>
