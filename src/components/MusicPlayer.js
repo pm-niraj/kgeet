@@ -21,7 +21,7 @@ const MusicPlayer = ({ audioUrl }) => {
     const [beforeMuteVol, setBeforeMuteVol] = useState(5);
     const [hoverTime, setHoverTime] = useState(null);
     const [hoverX, setHoverX] = useState(0);
-    const [progressDuration, setProgressDuration] = useState(0);
+    const [progressTime, setProgressTime] = useState(0);
 
     const chunkSize = 1024 * 512; // 512 KB
     const ALLOWED_CHUNKS_NUMBER = 10;
@@ -32,12 +32,8 @@ const MusicPlayer = ({ audioUrl }) => {
         return `${min}:${sec < 10 ? '0' : ''}${sec}`;
     };
 
-    useEffect(() => {
-        setProgressDuration(currentTime.current);
-    }, [currentTime.current])
-
     function bytesPlayed(){
-        console.log("Bytes played : ", currentTime.current, duration, totalAudioBytes.current);
+        console.log("Bytes played : ", currentTime, duration, totalAudioBytes.current);
         return (currentTime.current / duration.current) * totalAudioBytes.current;
     }
 
@@ -76,6 +72,19 @@ const MusicPlayer = ({ audioUrl }) => {
         }
     };
 
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        const handleTimeUpdate = () => {
+            setProgressTime(audio.currentTime);
+            currentTime.current = audio.currentTime;
+        };
+
+        audio.addEventListener('timeupdate', handleTimeUpdate);
+        return () => audio.removeEventListener('timeupdate', handleTimeUpdate);
+    }, []);
+
     // Setup MediaSource on audioUrl change
     useEffect(() => {
         if (!audioUrl) return;
@@ -104,7 +113,7 @@ const MusicPlayer = ({ audioUrl }) => {
         })();
     }, [audioUrl]);
 
-    const initMediaBuffer = async (url) => {
+    const initMediaBuffer = async () => {
         const mimeCodec = 'audio/mpeg';
         const mediaSource = mediaSourceRef.current;
 
@@ -121,13 +130,12 @@ const MusicPlayer = ({ audioUrl }) => {
                 } else if (!sourceBuffer.updating && fetchOffset.current < totalAudioBytes.current && !stopRunning.current) {
                     //We have automatic memory cleaning if we give enough time
                     await waitUntil(canFetchMoreChunks);
-                    console.log(canFetchMoreChunks())
-                    loadNextChunk(url);
+                    loadNextChunk(audioUrl);
                 }
             });
 
             if(!stopRunning.current) {
-                loadNextChunk(url);
+                loadNextChunk(audioUrl);
             }
         } else {
             console.error('Unsupported MIME type or codec:', mimeCodec);
@@ -177,14 +185,14 @@ const MusicPlayer = ({ audioUrl }) => {
         });
     }
 
-    const loadNextChunk = async (url) => {
+    const loadNextChunk = async () => {
         if(!totalAudioBytes.current)
-            await fetchTotalBytes(url);
+            await fetchTotalBytes(audioUrl);
         const start = fetchOffset.current;
         const end = Math.min(start + chunkSize - 1, totalAudioBytes.current - 1); // prevent overflow
 
         try {
-            const res = await fetch(`http://localhost:8083/serve/${(url)}`, {
+            const res = await fetch(`http://localhost:8083/serve/${(audioUrl)}`, {
                 headers: { Range: `bytes=${start}-${end}` },
             });
             console.log(`bytes=${start}-${end}`)
@@ -246,13 +254,6 @@ const MusicPlayer = ({ audioUrl }) => {
         setIsPlaying(false);
     };
 
-    useEffect(() => {
-        const audio = audioRef.current;
-        if (!audio) return;
-        const handleTimeUpdate = () => {setProgressDuration(audio.currentTime)};
-        audio.addEventListener('timeupdate', handleTimeUpdate);
-        return () => audio.removeEventListener('timeupdate', handleTimeUpdate);
-    }, []);
 
     useEffect(() => {
         if (audioRef.current) {
@@ -324,10 +325,10 @@ const MusicPlayer = ({ audioUrl }) => {
                 onMouseLeave={handleMouseLeave}
             >
                 <div className="flex justify-between text-sm">
-                    <span>{formatTime(progressDuration)}</span>
-                    <span>{formatTime(duration.current - progressDuration)}</span>
+                    <span>{formatTime(progressTime)}</span>
+                    <span>{formatTime(duration.current - progressTime)}</span>
                 </div>
-                <progress value={(progressDuration / duration.current) * 100} max="100" className="w-full cursor-pointer"></progress>
+                <progress value={(progressTime / duration.current) * 100} max="100" className="w-full cursor-pointer"></progress>
                 {hoverTime !== null && (
                     <div
                         className="absolute bottom-6 text-xs bg-gray-700 px-2 py-1 rounded"
