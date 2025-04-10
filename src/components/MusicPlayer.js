@@ -1,12 +1,9 @@
-import React, {useState, useEffect, useRef} from 'react';
-import {
-    FaPlay, FaPause, FaVolumeUp, FaVolumeDown,
-    FaVolumeMute, FaPlus, FaMinus
-} from 'react-icons/fa';
+import React, {useEffect, useRef, useState} from 'react';
+import {FaMinus, FaPause, FaPlay, FaPlus, FaVolumeDown, FaVolumeMute, FaVolumeUp} from 'react-icons/fa';
 import MusicBroker from "../utilities/music/MusicBroker";
 import Progress from "../utilities/music/Progress";
-import TimeFormatter from "../utilities/music/TimeFormatter";
 import progress from "../utilities/music/Progress";
+import TimeFormatter from "../utilities/music/TimeFormatter";
 import ChunkLoader from "../utilities/music/ChunkLoader";
 
 const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
@@ -15,6 +12,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     const sourceBufferRef = useRef(null);
     const progressElement = useRef(null);
     const songLoaded = useRef(false)
+    const isSeeking = useRef(false)
 
     //Problem solved temporarily duration -> Can't be 1 initially -> But can't divide by duration okay
     const chunksEndReached = useRef(false);
@@ -111,46 +109,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         return chunkLoader.current.currentFetchOffset < progressObject.current.totalAudioBytes && !chunksEndReached.current;
     }
 
-    // function findIncludingRangeOffset(currentDuration) {
-    //     const bytePosition = (currentDuration / progressObject.current.duration) * progressObject.current.totalAudioBytes;
-    //     const chunkIndex = Math.floor(bytePosition / CHUNK_SIZE);
-    //     const chunkStartRange = chunkIndex * CHUNK_SIZE;
-    //     return chunkStartRange;
-    // }
-
-    // async function loadFromDuration(period, url) {
-    //     fetchOffset.current = findIncludingRangeOffset(period);
-    //
-    //     const sb = sourceBufferRef.current;
-    //
-    //     await waitForUpdateEnd(sb);
-    //
-    //     const left = Math.max(0, period - 50);
-    //     const right = Math.min(progressObject.current.duration, period + 50);
-    //
-    //     sb.remove(0, left);
-    //     await waitForUpdateEnd(sb);
-    //
-    //     sb.remove(right, progressObject.current.duration);
-    //     await waitForUpdateEnd(sb);
-    //
-    //     await loadNextChunk(url).then(play);
-    // }
-
-    // function waitForUpdateEnd(sourceBuffer) {
-    //     return new Promise(resolve => {
-    //         if (!sourceBuffer.updating) {
-    //             resolve();
-    //         } else {
-    //             const handler = () => {
-    //                 sourceBuffer.removeEventListener('updateend', handler);
-    //                 resolve();
-    //             };
-    //             sourceBuffer.addEventListener('updateend', handler);
-    //         }
-    //     });
-    // }
-
     const tryEndStream = () => {
         if (!sourceBufferRef.current.updating) {
             mediaSourceRef.current.endOfStream();
@@ -195,18 +153,23 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         const rect = progressElement.current.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const newTime = (clickX / rect.width) * progressObject.current.duration;
-
-        /**
-         * Call load from method here
-         */
-        // loadFromDuration(newTime, audioUrl).then(r => {
-        //     audioRef.current.currentTime = newTime;
-        // })
-
-        audioElement.current.currentTime = newTime;
+        if(isSeekable(newTime))
+            audioElement.current.currentTime = newTime;
 
     };
 
+    const isSeekable = (desiredTime) => {
+        for (let i = 0; i < sourceBufferRef.current.buffered.length; i++) {
+            console.log(sourceBufferRef.current.buffered.start(i), sourceBufferRef.current.buffered.end(i))
+            if (sourceBufferRef.current.buffered.start(i) <= desiredTime && desiredTime <= sourceBufferRef.current.buffered.end(i)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    const findBytePositionFromDuration = (currentDuration) => {
+        return Math.trunc(Math.max((currentDuration / progressObject.current.duration) * progressObject.current.totalAudioBytes - 10000, 0));
+    }
     const handleMouseMove = (e) => {
         if (!progressElement.current) return;
         const rect = progressElement.current.getBoundingClientRect();

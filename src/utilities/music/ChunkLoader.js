@@ -22,6 +22,7 @@ class ChunkLoader{
     }
 
     loadNextChunk = async () => {
+        console.log(this.progress)
         const chunkStart = this.currentFetchOffset;
         const chunkEnd = Math.min(chunkStart + ChunkLoader.CHUNK_SIZE - 1, this.progress.current.totalAudioBytes - 1); // prevent overflow
 
@@ -55,7 +56,7 @@ class ChunkLoader{
     }
 
     hasManyChunksRemainingToPlay = () => {
-        console.log("Chunks remain to play ", this.chunksRemainingToPlay(), "bytes Played ", this.progress.current.bytesPlayed())
+        // console.log("Chunks remain to play ", this.chunksRemainingToPlay(), "bytes Played ", this.progress.current.bytesPlayed())
         return this.chunksRemainingToPlay() < ChunkLoader.ALLOWED_CHUNKS_NUMBER;
     }
 
