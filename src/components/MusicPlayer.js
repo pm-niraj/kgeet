@@ -9,18 +9,17 @@ import TimeFormatter from "../utilities/music/TimeFormatter";
 import progress from "../utilities/music/Progress";
 
 const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
-    const audioRef = useRef(null);
+    const audioElement = useRef(null);
     const mediaSourceRef = useRef(null);
     const sourceBufferRef = useRef(null);
     const queueRef = useRef([]);
-    const progressRef = useRef(null);
+    const progressElement = useRef(null);
     const totalAudioBytes = useRef(0);
     const fetchOffset = useRef(0);
-    const started = useRef(false)
+    const songLoaded = useRef(false)
 
     //Problem solved temporarily duration -> Can't be 1 initially -> But can't divide by duration okay
     const duration = useRef(0);
-    const stopRunning = useRef(false);
     const chunksEndReached = useRef(false);
     const progressObject = useRef(null)
 
@@ -31,11 +30,11 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
     const [hoverX, setHoverX] = useState(0);
     const [progressTime, setProgressTime] = useState(0);
 
-    const chunkSize = 1024 * 512; // 512 KB
+    const CHUNK_SIZE = 1024 * 512; // 512 KB
     const ALLOWED_CHUNKS_NUMBER = 10;
 
     function chunksRemainingToPlay(){
-        return (fetchOffset.current - progressObject.current.bytesPlayed()) / chunkSize;
+        return (fetchOffset.current - progressObject.current.bytesPlayed()) / CHUNK_SIZE;
     }
 
     function hasManyChunksRemainingToPlay(){
@@ -45,57 +44,55 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
 
     useEffect(() => {
         progressObject.current = new Progress(0, duration.current, totalAudioBytes.current)
-        const audio = audioRef.current;
+        const audio = audioElement.current;
         if (!audio) return;
 
-        const handleTimeUpdate = () => {
+        const update = () => {
             setProgressTime(audio.currentTime);
             progressObject.current.changeProgress(audio.currentTime);
-            if(started.current && progressObject.current?.ended()){
-                started.current = false
+            if(songLoaded.current && progressObject.current?.ended()){
+                songLoaded.current = false
                 console.log("Officially")
                 setNext()
             }
         };
 
-        audio.addEventListener('timeupdate', handleTimeUpdate);
-        audio.addEventListener('ended', () => {
-            setNext()
-        });
-        return () => audio.removeEventListener('timeupdate', handleTimeUpdate);
+        audio.addEventListener('timeupdate', update);
+        return () => audio.removeEventListener('timeupdate', update);
     }, []);
 
-    // Setup MediaSource on audioUrl change
+    function initializeSongPlayVars() {
+        fetchOffset.current = 0;
+        queueRef.current = [];
+        //Parallel loading of totalBytes and duration
+        return Promise.all([MusicBroker.fetchTotalBytes(audioUrl),
+            MusicBroker.fetchDuration(audioUrl)])
+            .then(([t, d]) => {
+                totalAudioBytes.current = t;
+                duration.current = d;
+                progressObject.current = new Progress(0, duration.current, totalAudioBytes.current)
+            })
+            .catch(console.log)
+    }
+
+// -- When audio url is changed
     useEffect(() => {
-        chunksEndReached.current = false;
-        stopRunning.current = false;
         if (!audioUrl) return;
-        console.log(audioUrl)
+        chunksEndReached.current = false;
+        initializeSongPlayVars()
+            .then(() => {
+                mediaSourceRef.current = new MediaSource;
+                audioElement.current.src = URL.createObjectURL(mediaSourceRef.current);
+                //Source open event is now fired immediately after attaching mediasource to audioELementSrc
 
-        pause();
-        if (audioRef.current) {
-            audioRef.current.src = '';
-        }
-
-        (async () => {
-            totalAudioBytes.current = await MusicBroker.fetchTotalBytes(audioUrl)
-            duration.current = await MusicBroker.fetchDuration(audioUrl)
-            progressObject.current = new Progress(0, duration.current, totalAudioBytes.current)
-            fetchOffset.current = 0;
-            queueRef.current = [];
-
-            const mediaSource = new MediaSource();
-            mediaSourceRef.current = mediaSource;
-
-            audioRef.current.src = URL.createObjectURL(mediaSource);
-
-            mediaSource.addEventListener('sourceopen', () => {
-                initMediaBuffer(audioUrl).then(play);
-            });
-        })();
+                mediaSourceRef.current.addEventListener('sourceopen', () => {
+                    initializeAudioSystem(audioUrl)
+                        .then(loadNextChunk).then(play);
+                });
+            })
     }, [audioUrl]);
 
-    const initMediaBuffer = async () => {
+    const initializeAudioSystem = async () => {
         const mimeCodec = 'audio/mpeg';
         const mediaSource = mediaSourceRef.current;
 
@@ -104,38 +101,41 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
             sourceBuffer.mode = 'sequence';
             sourceBufferRef.current = sourceBuffer;
 
-            //Whenever updateend is done -> Current buffer is updated, this event gets fired non stop
-            sourceBuffer.addEventListener('updateend', async () => {
-                console.log("Updateend fired")
-                if (!sourceBuffer.updating && queueRef.current.length > 0) {
-                    sourceBuffer.appendBuffer(queueRef.current.shift());
-                } else if (fetchOffset.current < totalAudioBytes.current) {
-                    if(!stopRunning.current && !chunksEndReached.current) {
-                        loadNextChunk(audioUrl);
-                    }
-                }
-                else{
-                    tryEndStream()
-                }
-            });
-
-            if(!stopRunning.current && !chunksEndReached.current) {
-                loadNextChunk(audioUrl);
-            }
+            //Whenever updateend is done -> Current buffer is updated, this event gets fired non-stop
+            sourceBuffer.addEventListener('updateend', updateEndHandler);
         } else {
             console.error('Unsupported MIME type or codec:', mimeCodec);
         }
     };
 
+    const updateEndHandler = async () => {
+        console.log("Updateend fired")
+        if (canAppendQueueToBuffer()) {
+            sourceBufferRef.current.appendBuffer(queueRef.current.shift());
+        }
+        if (moreChunksToLoad()) {
+            loadNextChunk(audioUrl);
+        }
+        else{
+            tryEndStream()
+        }
+    }
+
+    function moreChunksToLoad() {
+        return fetchOffset.current < totalAudioBytes.current && !chunksEndReached.current;
+    }
+
+    function canAppendQueueToBuffer() {
+        return !sourceBufferRef.current.updating && queueRef.current.length > 0;
+    }
     function findIncludingRangeOffset(currentDuration) {
         const bytePosition = (currentDuration / duration.current) * totalAudioBytes.current;
-        const chunkIndex = Math.floor(bytePosition / chunkSize);
-        const chunkStartRange = chunkIndex * chunkSize;
+        const chunkIndex = Math.floor(bytePosition / CHUNK_SIZE);
+        const chunkStartRange = chunkIndex * CHUNK_SIZE;
         return chunkStartRange;
     }
 
     async function loadFromDuration(period, url) {
-        stopRunning.current = true;
         fetchOffset.current = findIncludingRangeOffset(period);
         queueRef.current = [];
 
@@ -152,7 +152,6 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
         sb.remove(right, duration.current);
         await waitForUpdateEnd(sb);
 
-        stopRunning.current = false;
         await loadNextChunk(url).then(play);
     }
 
@@ -172,7 +171,6 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
     const tryEndStream = () => {
         if (!sourceBufferRef.current.updating) {
             mediaSourceRef.current.endOfStream();
-            stopRunning.current = true;
             chunksEndReached.current = true;
             console.log("Ended in try")
         } else {
@@ -186,7 +184,7 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
                 totalAudioBytes.current = await MusicBroker.fetchTotalBytes(audioUrl);
             }
         const start = fetchOffset.current;
-        const end = Math.min(start + chunkSize - 1, totalAudioBytes.current - 1); // prevent overflow
+        const end = Math.min(start + CHUNK_SIZE - 1, totalAudioBytes.current - 1); // prevent overflow
 
         try {
             const res = await fetch(`http://localhost:8083/serve/${(audioUrl)}`, {
@@ -205,7 +203,7 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
             queueRef.current.push(chunk);
             fetchOffset.current = end + 1;
 
-            if(!stopRunning.current || !chunksEndReached.current) { //IMagine some kind of stop switch
+            if(!chunksEndReached.current) { //IMagine some kind of stop switch
                 if(!sourceBufferRef.current.updating){
                     if(hasManyChunksRemainingToPlay()){
                         sourceBufferRef.current.appendBuffer(queueRef.current.shift());
@@ -237,20 +235,20 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
     };
 
     const play = () => {
-        started.current = true
-        audioRef.current?.play();
+        songLoaded.current = true
+        audioElement.current?.play();
         setIsPlaying(true);
     };
 
     const pause = () => {
-        audioRef.current?.pause();
+        audioElement.current?.pause();
         setIsPlaying(false);
     };
 
 
     useEffect(() => {
-        if (audioRef.current) {
-            audioRef.current.volume = volume / 10;
+        if (audioElement.current) {
+            audioElement.current.volume = volume / 10;
         }
     }, [volume]);
 
@@ -264,8 +262,8 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
     };
 
     const handleProgressClick = (e) => {
-        if (!audioRef.current || !progressRef.current || !duration.current) return;
-        const rect = progressRef.current.getBoundingClientRect();
+        if (!audioElement.current || !progressElement.current || !duration.current) return;
+        const rect = progressElement.current.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const newTime = (clickX / rect.width) * duration.current;
 
@@ -276,13 +274,13 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
         //     audioRef.current.currentTime = newTime;
         // })
 
-        audioRef.current.currentTime = newTime;
+        audioElement.current.currentTime = newTime;
 
     };
 
     const handleMouseMove = (e) => {
-        if (!progressRef.current) return;
-        const rect = progressRef.current.getBoundingClientRect();
+        if (!progressElement.current) return;
+        const rect = progressElement.current.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const time = (x / rect.width) * duration.current;
         setHoverTime(time);
@@ -300,7 +298,7 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
                 <span className="text-sm">Album Art</span>
             </div>
 
-            <audio ref={audioRef} preload="auto" />
+            <audio ref={audioElement} preload="auto" />
 
             <div className="flex items-center gap-4 mb-2">
                 {isPlaying ? (
@@ -312,7 +310,7 @@ const MusicPlayer = ({ audioUrl, setNext, setPrev}) => {
 
             <div
                 className="progress w-full mb-2 relative"
-                ref={progressRef}
+                ref={progressElement}
                 onClick={handleProgressClick}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
