@@ -20,5 +20,14 @@ class MusicBroker {
             console.error('Error fetching duration:', err);
             return 0;
         }
-    };}
+    }
+
+    static fetchChunk = async (url, chunkStart, chunkEnd) =>
+    {
+        return await fetch(`http://localhost:8083/serve/${(url)}`, {
+            headers: {Range: `bytes=${chunkStart}-${chunkEnd}`},
+        })
+    }
+
+}
 export default MusicBroker
