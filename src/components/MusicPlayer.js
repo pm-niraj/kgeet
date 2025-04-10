@@ -28,10 +28,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     const [hoverX, setHoverX] = useState(0);
     const [progressTime, setProgressTime] = useState(0);
 
-    const CHUNK_SIZE = 1024 * 512; // 512 KB
-    const ALLOWED_CHUNKS_NUMBER = 10;
-
-
     useEffect(() => {
         progressObject.current = new Progress(0, 0, 0)
         chunkLoader.current = new ChunkLoader(audioUrl, sourceBufferRef, progressObject, tryEndStream)
@@ -43,7 +39,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
             progressObject.current.changeProgress(audio.currentTime);
             if (songLoaded.current && progressObject.current?.ended()) {
                 songLoaded.current = false
-                console.log("Officially")
                 setNext()
             }
         };
@@ -53,22 +48,24 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     }, []);
 
 
+    function resetChunkLoader() {
+        chunkLoader.current.audioUrl = audioUrl
+        chunkLoader.current.currentFetchOffset = 0
+    }
+
 // -- When audio url is changed
     useEffect(() => {
         if (!audioUrl) return;
-        chunksEndReached.current = false;
-        console.log("---------counting ")
         initializeSongPlayVars()
             .then(() => {
+
                 mediaSourceRef.current = new MediaSource;
                 audioElement.current.src = URL.createObjectURL(mediaSourceRef.current);
-                //Source open event is now fired immediately after attaching mediasource to audioELementSrc
 
                 mediaSourceRef.current.addEventListener('sourceopen', () => {
                     configureMediaplayerWithAudioChunks(audioUrl)
-                        // .then(loadNextChunk).then(play);
                         .then(async () => {
-                            chunkLoader.current.audioUrl = audioUrl
+                            resetChunkLoader();
                             await chunkLoader.current.loadNextChunk()
                         }).then(play);
                 });
@@ -76,8 +73,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     }, [audioUrl]);
 
     function initializeSongPlayVars() {
-        //Parallel loading of totalBytes and duration
-        chunkLoader.current.currentFetchOffset = 0
+        chunksEndReached.current = false;
         return Promise.all([MusicBroker.fetchTotalBytes(audioUrl),
             MusicBroker.fetchDuration(audioUrl)])
             .then(([t, d]) => {
@@ -105,7 +101,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     const updateEndHandler = async () => {
         console.log("Updateend fired")
         if (moreChunksToLoad()) {
-            // loadNextChunk(audioUrl);
             await chunkLoader.current.loadNextChunk()
         } else {
             tryEndStream()
@@ -142,19 +137,19 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     //     await loadNextChunk(url).then(play);
     // }
 
-    function waitForUpdateEnd(sourceBuffer) {
-        return new Promise(resolve => {
-            if (!sourceBuffer.updating) {
-                resolve();
-            } else {
-                const handler = () => {
-                    sourceBuffer.removeEventListener('updateend', handler);
-                    resolve();
-                };
-                sourceBuffer.addEventListener('updateend', handler);
-            }
-        });
-    }
+    // function waitForUpdateEnd(sourceBuffer) {
+    //     return new Promise(resolve => {
+    //         if (!sourceBuffer.updating) {
+    //             resolve();
+    //         } else {
+    //             const handler = () => {
+    //                 sourceBuffer.removeEventListener('updateend', handler);
+    //                 resolve();
+    //             };
+    //             sourceBuffer.addEventListener('updateend', handler);
+    //         }
+    //     });
+    // }
 
     const tryEndStream = () => {
         if (!sourceBufferRef.current.updating) {
@@ -167,52 +162,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         }
     }
 
-    function isFreeToAppendInBuffer() {
-        return !chunksEndReached.current && !sourceBufferRef.current.updating;
-    }
-
-    // const loadNextChunk = async () => {
-    //     const chunkStart = fetchOffset.current;
-    //     const chunkEnd = Math.min(chunkStart + CHUNK_SIZE - 1, progressObject.current.totalAudioBytes - 1); // prevent overflow
-    //
-    //     try {
-    //         const res = await MusicBroker.fetchChunk(audioUrl, chunkStart, chunkEnd)
-    //         console.log(`bytes=${chunkStart}-${chunkEnd}`)
-    //
-    //         if (!res.ok || res.status === 416) {
-    //             tryEndStream();
-    //             return;
-    //         }
-    //
-    //         //Proceed only after getting chunk synchronously
-    //         const chunk = await res.arrayBuffer();
-    //         fetchOffset.current = chunkEnd + 1;
-    //
-    //         if (isFreeToAppendInBuffer()) { //IMagine some kind of stop switch
-    //             if (hasManyChunksRemainingToPlay()) {
-    //                 sourceBufferRef.current.appendBuffer(chunk);
-    //             } else {
-    //                 await waitUntil(hasManyChunksRemainingToPlay);
-    //                 sourceBufferRef.current.appendBuffer(chunk);
-    //             }
-    //         }
-    //     } catch (err) {
-    //         console.error('Error loading audio chunk:', err);
-    //     }
-    // };
-
-    const waitUntil = async (conditionFn, interval = 5000) => {
-        return new Promise((resolve) => {
-            const check = () => {
-                if (conditionFn()) {
-                    resolve();
-                } else {
-                    setTimeout(check, interval);
-                }
-            };
-            check();
-        });
-    };
 
     const play = () => {
         songLoaded.current = true
