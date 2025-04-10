@@ -120,6 +120,32 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         }
     }
 
+    const handleProgressClick = (e) => {
+        if (!audioElement.current || !progressElement.current || !progressObject.current.duration) return;
+        const rect = progressElement.current.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const newTime = (clickX / rect.width) * progressObject.current.duration;
+        if(isSeekable(newTime)){
+            audioElement.current.currentTime = newTime;
+        }
+        else{
+            console.log("Not seekable currently")
+        }
+
+    };
+
+    const isSeekable = (desiredTime) => {
+        for (let i = 0; i < sourceBufferRef.current.buffered.length; i++) {
+            console.log(sourceBufferRef.current.buffered.start(i), sourceBufferRef.current.buffered.end(i))
+            if (sourceBufferRef.current.buffered.start(i) <= desiredTime && desiredTime <= sourceBufferRef.current.buffered.end(i)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    const findBytePositionFromDuration = (currentDuration) => {
+        return Math.trunc(Math.max((currentDuration / progressObject.current.duration) * progressObject.current.totalAudioBytes - 10000, 0));
+    }
 
     const play = () => {
         songLoaded.current = true
@@ -148,28 +174,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         }
     };
 
-    const handleProgressClick = (e) => {
-        if (!audioElement.current || !progressElement.current || !progressObject.current.duration) return;
-        const rect = progressElement.current.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const newTime = (clickX / rect.width) * progressObject.current.duration;
-        if(isSeekable(newTime))
-            audioElement.current.currentTime = newTime;
-
-    };
-
-    const isSeekable = (desiredTime) => {
-        for (let i = 0; i < sourceBufferRef.current.buffered.length; i++) {
-            console.log(sourceBufferRef.current.buffered.start(i), sourceBufferRef.current.buffered.end(i))
-            if (sourceBufferRef.current.buffered.start(i) <= desiredTime && desiredTime <= sourceBufferRef.current.buffered.end(i)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    const findBytePositionFromDuration = (currentDuration) => {
-        return Math.trunc(Math.max((currentDuration / progressObject.current.duration) * progressObject.current.totalAudioBytes - 10000, 0));
-    }
     const handleMouseMove = (e) => {
         if (!progressElement.current) return;
         const rect = progressElement.current.getBoundingClientRect();

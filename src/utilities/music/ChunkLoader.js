@@ -60,6 +60,11 @@ class ChunkLoader{
         return this.chunksRemainingToPlay() < ChunkLoader.ALLOWED_CHUNKS_NUMBER;
     }
 
+    endCurrentLoading = () => {
+        this.currentFetchOffset = this.progress.current.bytesPlayed()
+        this.chunksEndReached = true;
+    }
+
     waitUntil = async (conditionFn, interval = 5000) => {
         return new Promise((resolve) => {
             const check = () => {
