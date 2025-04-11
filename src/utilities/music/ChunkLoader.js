@@ -43,7 +43,7 @@ class ChunkLoader{
                 if (this.hasManyChunksRemainingToPlay()) {
                     this.buffer.current.appendBuffer(chunk);
                 } else {
-                    await this.waitUntil(this.hasManyChunksRemainingToPlay);
+                    await this.waitUntil(this.allowedToAppendBufferNow());
                     this.buffer.current.appendBuffer(chunk);
                 }
             }
@@ -66,6 +66,7 @@ class ChunkLoader{
     }
 
     waitUntil = async (conditionFn, interval = 5000) => {
+        console.log('------waiting hmm hmm')
         return new Promise((resolve) => {
             const check = () => {
                 if (conditionFn()) {
@@ -77,5 +78,47 @@ class ChunkLoader{
             check();
         });
     };
+    startUpdating = async (currentTime) => {
+        this.progress.current.currentSeconds = currentTime;
+        this.currentFetchOffset = this.findBytePositionFromDuration(currentTime)
+        const chunkStart = this.currentFetchOffset
+        const chunkEnd = Math.min(chunkStart + ChunkLoader.CHUNK_SIZE - 1, this.progress.current.totalAudioBytes - 1); // prevent overflow
+
+        try {
+            const res = await MusicBroker.fetchChunk(this.audioUrl, chunkStart, chunkEnd)
+            // console.log(`updated bytes=${chunkStart}-${chunkEnd}`)
+
+            if (!res.ok || res.status === 416) {
+                this.tryEndStream();
+                return;
+            }
+
+            //Free to modify
+            this.chunksEndReached = false;
+            console.log(this.chunksRemainingToPlay(), this.hasManyChunksRemainingToPlay());
+
+            //Proceed only after getting chunk synchronously
+            const chunk = await res.arrayBuffer();
+            this.currentFetchOffset = chunkEnd + 1;
+
+            if (this.allowedToAppendBufferNow()) {
+                this.buffer.current.appendBuffer(chunk);
+            } else {
+                await this.waitUntil(this.allowedToAppendBufferNow);
+                this.buffer.current.appendBuffer(chunk);
+            }
+        } catch (err) {
+            console.error('Error loading audio chunk:', err);
+        }
+    }
+
+    allowedToAppendBufferNow() {
+        return () => this.hasManyChunksRemainingToPlay() && this.isFreeToAppendInBuffer();
+    }
+
+    findBytePositionFromDuration = (currentDuration) => {
+        return Math.trunc(Math.max((currentDuration / this.progress.current.duration) * this.progress.current.totalAudioBytes - 10000, 0));
+    }
+
 }
 export default ChunkLoader;
