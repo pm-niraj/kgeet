@@ -3,6 +3,7 @@ import MusicBroker from "./MusicBroker";
 class ChunkLoader{
     audioUrl
     buffer
+    queue
     currentFetchOffset = 0
     chunksEndReached = false
     static CHUNK_SIZE = 1024 * 512; // 512 KB
@@ -10,15 +11,16 @@ class ChunkLoader{
     tryEndStream
     progress
 
-    constructor(audioUrl, buffer, progressObject, tryEndStream) {
+    constructor(audioUrl, buffer, progressObject, tryEndStream, queue) {
         this.audioUrl = audioUrl
         this.buffer = buffer
         this.progress = progressObject
         this.tryEndStream = tryEndStream
+        this.queue = queue
     }
 
     isFreeToAppendInBuffer() {
-        return !this.chunksEndReached && !this.buffer.current.updating;
+        return !this.chunksEndReached && !this.buffer.current.updating && this.queue.current.length > 0;
     }
 
     loadNextChunk = async () => {
@@ -38,14 +40,16 @@ class ChunkLoader{
 
             //Proceed only after getting chunk synchronously
             const chunk = await res.arrayBuffer();
+
+            this.queue.current.push(chunk);
             this.currentFetchOffset = chunkEnd + 1;
 
             if (this.isFreeToAppendInBuffer()) { //IMagine some kind of stop switch
                 if (this.hasManyChunksRemainingToPlay()) {
-                    this.buffer.current.appendBuffer(chunk);
+                    this.buffer.current.appendBuffer(this.queue.current.shift());
                 } else {
                     await this.waitUntil(this.allowedToAppendBufferNow());
-                    this.buffer.current.appendBuffer(chunk);
+                    this.buffer.current.appendBuffer(this.queue.current.shift());
                 }
             }
         } catch (err) {
@@ -81,6 +85,7 @@ class ChunkLoader{
         });
     };
     startUpdating = async (currentTime) => {
+        this.queue.current = []
         this.progress.current.currentSeconds = currentTime;
         this.currentFetchOffset = this.findBytePositionFromDuration(currentTime)
         const chunkStart = this.currentFetchOffset
@@ -100,13 +105,14 @@ class ChunkLoader{
 
             //Proceed only after getting chunk synchronously
             const chunk = await res.arrayBuffer();
+            this.queue.current.push(chunk)
             this.currentFetchOffset = chunkEnd + 1;
 
             if (this.allowedToAppendBufferNow()) {
-                this.buffer.current.appendBuffer(chunk);
+                this.buffer.current.appendBuffer(this.queue.current.shift());
             } else {
                 await this.waitUntil(this.allowedToAppendBufferNow);
-                this.buffer.current.appendBuffer(chunk);
+                this.buffer.current.appendBuffer(this.queue.current.shift());
             }
         } catch (err) {
             console.error('Error loading audio chunk:', err);
@@ -126,7 +132,7 @@ class ChunkLoader{
         // Align to nearest lower CHUNK_SIZE boundary
         const alignedPosition = Math.floor(rawPosition / CHUNK_SIZE) * CHUNK_SIZE;
 
-        return Math.max(alignedPosition, 0);
+        return Math.max(Math.trunc(rawPosition), 0);
     };
 
 }

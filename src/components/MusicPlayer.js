@@ -13,6 +13,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     const progressElement = useRef(null);
     const songLoaded = useRef(false)
     const isSeeking = useRef(false)
+    const queueRef = useRef([])
 
     //Problem solved temporarily duration -> Can't be 1 initially -> But can't divide by duration okay
     const chunksEndReached = useRef(false);
@@ -28,7 +29,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
 
     useEffect(() => {
         progressObject.current = new Progress(0, 0, 0)
-        chunkLoader.current = new ChunkLoader(audioUrl, sourceBufferRef, progressObject, tryEndStream)
+        chunkLoader.current = new ChunkLoader(audioUrl, sourceBufferRef, progressObject, tryEndStream, queueRef)
         const audio = audioElement.current;
         if (!audio) return;
 
@@ -49,6 +50,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
 
     function resetChunkLoader() {
         chunkLoader.current.audioUrl = audioUrl
+        queueRef.current = []
         chunkLoader.current.currentFetchOffset = 0
     }
 
@@ -142,11 +144,20 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
             await chunkLoader.current.endCurrentLoading();
 
             // Seek immediately
-            audioElement.current.currentTime = newTime;
+            // audioElement.current.currentTime = newTime;
 
             const sourceBuffer = sourceBufferRef.current;
             const mediaSource = mediaSourceRef.current;
-
+            function waitForUpdateEnd(sourceBuffer) {
+                return new Promise(resolve => {
+                    if (!sourceBuffer.updating) {
+                        resolve();
+                    } else {
+                        sourceBuffer.addEventListener('updateend', resolve, { once: true });
+                    }
+                });
+            }
+            await waitForUpdateEnd(sourceBuffer)
             // Safely abort if ready
             if (
                 sourceBuffer &&
@@ -173,9 +184,10 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
 
             // Clear buffer
             try {
-                sourceBuffer.timestampOffset = newTime;
                 sourceBuffer.remove(0, Infinity);
                 await waitForRemove();
+
+                sourceBuffer.timestampOffset = newTime;
             } catch (err) {
                 console.warn("Remove failed or skipped:", err);
             }
@@ -188,7 +200,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
 
             // Try playing
             try {
-                audioElement.current.currentTime = newTime + 0.1;
+                audioElement.current.currentTime = newTime;
             } catch (err) {
                 console.warn("Playback failed:", err);
             }
