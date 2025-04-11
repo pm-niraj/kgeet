@@ -35,7 +35,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
 
         const update = () => {
             if(isSeeking.current) return
-            console.log("Update's work at ", audio.currentTime, progressObject)
             setProgressTime(audio.currentTime);
             progressObject.current.currentSeconds = audio.currentTime
             if (songLoaded.current && progressObject.current?.ended()) {
@@ -63,21 +62,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
 
                 mediaSourceRef.current = new MediaSource;
                 audioElement.current.src = URL.createObjectURL(mediaSourceRef.current);// Common media events for <audio> (you can add more as needed)
-                const audioEvents = [
-                    'loadstart', 'suspend', 'abort', 'error', 'emptied',
-                    'stalled', 'loadedmetadata', 'loadeddata', 'canplay',
-                    'canplaythrough', 'playing', 'waiting', 'seeking', 'seeked',
-                    'ended', 'durationchange', 'timeupdate', 'play', 'pause',
-                    'ratechange', 'volumechange'
-                ];
-
-// Attach listeners dynamically
-                audioEvents.forEach(event => {
-                    audioElement.current.addEventListener(event, e => {
-                        console.log(`🎵 [${e.type}]`, e);
-                    });
-                });
-
                 mediaSourceRef.current.addEventListener('sourceopen', () => {
                     configureMediaplayerWithAudioChunks(audioUrl)
                         .then(async () => {
@@ -115,10 +99,10 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     };
 
     const updateEndHandler = async () => {
-        console.log("Updateend fired")
+        console.log("Appended to -- SB")
         if (moreChunksToLoad()) {
             await chunkLoader.current.loadNextChunk()
-        } else if(chunksEndReached.current) {
+        } else if(chunksEndReached.current) { //We don't want to end stream abruptly, during seek (Because We must Skip LoadNextChunk behaviour + Not End Stream We need it
             tryEndStream()
         }
     }
@@ -128,13 +112,10 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     }
 
     const tryEndStream = () => {
-        console.log("-------><<<<<<<holy tryed end stream")
         if (!sourceBufferRef.current.updating) {
             mediaSourceRef.current.endOfStream();
             chunksEndReached.current = true;
-            console.log("Ended in try")
         } else {
-            // Try again shortly
             setTimeout(tryEndStream, 50);
         }
     }
@@ -155,14 +136,10 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
             isSeeking.current = false
             audioElement.current.currentTime = newTime;
         } else {
-            console.log("Loading from new update --->");
             isSeeking.current = true;
             setIsPlaying(false)
 
             await chunkLoader.current.endCurrentLoading();
-
-            // Seek immediately
-            // audioElement.current.currentTime = newTime;
 
             const sourceBuffer = sourceBufferRef.current;
             const mediaSource = mediaSourceRef.current;
@@ -176,7 +153,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
                 });
             }
             await waitForUpdateEnd(sourceBuffer)
-            // Safely abort if ready
             if (
                 sourceBuffer &&
                 mediaSource &&
@@ -244,7 +220,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
 
     const isSeekable = (desiredTime) => {
         for (let i = 0; i < sourceBufferRef.current.buffered.length; i++) {
-            console.log(sourceBufferRef.current.buffered.start(i), sourceBufferRef.current.buffered.end(i))
             if (sourceBufferRef.current.buffered.start(i) <= desiredTime && desiredTime <= sourceBufferRef.current.buffered.end(i)) {
                 return true;
             }
@@ -292,20 +267,8 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     const handleMouseLeave = () => {
         setHoverTime(null);
 
-        logBufferedRanges(sourceBufferRef.current)
-        console.log("Mouse progress? -", progressObject.current)
     };
 
-    const logBufferedRanges = (sourceBuffer) => {
-        if (!sourceBuffer) return;
-
-        const buffered = sourceBuffer.buffered;
-        for (let i = 0; i < buffered.length; i++) {
-            const start = TimeFormatter.formatTime(buffered.start(i));
-            const end = TimeFormatter.formatTime(buffered.end(i));
-            console.log(`Buffered range ${i}: ${start} → ${end}`);
-        }
-    };
     return (
         <div
             className="w-14 h-1/3 flex-none flex flex-col items-center bg-gray-800 text-white p-4 rounded-2xl shadow-lg w-96">

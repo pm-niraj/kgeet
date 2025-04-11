@@ -7,7 +7,7 @@ class ChunkLoader{
     currentFetchOffset = 0
     chunksEndReached = false
     static CHUNK_SIZE = 1024 * 512; // 512 KB
-    static ALLOWED_CHUNKS_NUMBER = 2;
+    static ALLOWED_CHUNKS_NUMBER = 10;
     tryEndStream
     progress
 
@@ -25,7 +25,6 @@ class ChunkLoader{
 
     loadNextChunk = async () => {
         if(this.chunksEndReached) return
-        console.log("Load chunk ", this.progress)
         const chunkStart = this.currentFetchOffset;
         const chunkEnd = Math.min(chunkStart + ChunkLoader.CHUNK_SIZE - 1, this.progress.current.totalAudioBytes - 1); // prevent overflow
 
@@ -72,7 +71,7 @@ class ChunkLoader{
     }
 
     waitUntil = async (conditionFn, interval = 5000) => {
-        console.log('------waiting hmm hmm')
+        console.log('Waiting to free some SourceBuffer space after you play more')
         return new Promise((resolve) => {
             const check = () => {
                 if (conditionFn()) {
@@ -85,7 +84,6 @@ class ChunkLoader{
         });
     };
     startUpdating = async (currentTime) => {
-        console.log("Update chunk ", this.progress)
         this.queue.current = []
         this.currentFetchOffset = this.findBytePositionFromDuration(currentTime)
         const chunkStart = this.currentFetchOffset
