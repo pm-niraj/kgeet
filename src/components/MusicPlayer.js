@@ -33,12 +33,6 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         if (!audio) return;
 
         const update = () => {
-            console.log("Audioelement state", audioElement.current.readyState)
-            console.log("currentTime:", audioElement.current.currentTime);
-            const buffered = audioElement.current.buffered;
-            for (let i = 0; i < buffered.length; i++) {
-                console.log(`Buffered range ${i}: ${buffered.start(i)} - ${buffered.end(i)}`);
-            }
             if(isSeeking.current) return
             setProgressTime(audio.currentTime);
             progressObject.current.changeProgress(audio.currentTime);
@@ -73,7 +67,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
                             resetChunkLoader();
                             await chunkLoader.current.loadNextChunk()
                         }).then(play);
-                });
+                }, {once: true});
             })
     }, [audioUrl]);
 
@@ -127,46 +121,80 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         }
     }
 
+
     const handleProgressClick = async (e) => {
-        if (!audioElement.current || !progressElement.current || !progressObject.current.duration) return;
+        if (
+            !audioElement.current ||
+            !progressElement.current ||
+            !progressObject.current.duration
+        ) return;
+
         const rect = progressElement.current.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const newTime = (clickX / rect.width) * progressObject.current.duration;
+
         if (isSeekable(newTime)) {
             audioElement.current.currentTime = newTime;
         } else {
-            console.log("Not seekable currently")
-            isSeeking.current = true
-            chunkLoader.current.endCurrentLoading()
+            console.log("Loading from new update --->");
+            isSeeking.current = true;
 
+            await chunkLoader.current.endCurrentLoading();
+
+            // Seek immediately
             audioElement.current.currentTime = newTime;
 
-            sourceBufferRef.current.abort()
-            sourceBufferRef.current.timestampOffset = newTime;
-            sourceBufferRef.current.remove(0, Infinity)
+            const sourceBuffer = sourceBufferRef.current;
+            const mediaSource = mediaSourceRef.current;
 
-            await chunkLoader.current.startUpdating(newTime)
+            // Safely abort if ready
+            if (
+                sourceBuffer &&
+                mediaSource &&
+                mediaSource.readyState === "open" &&
+                !sourceBuffer.updating
+            ) {
+                try {
+                    sourceBuffer.abort();
+                } catch (err) {
+                    console.warn("Abort failed:", err);
+                }
+            }
+
+            // Wait for remove to complete
+            const waitForRemove = () =>
+                new Promise((resolve) => {
+                    const onUpdateEnd = () => {
+                        sourceBuffer.removeEventListener("updateend", onUpdateEnd);
+                        resolve();
+                    };
+                    sourceBuffer.addEventListener("updateend", onUpdateEnd);
+                });
+
+            // Clear buffer
+            try {
+                sourceBuffer.timestampOffset = newTime;
+                sourceBuffer.remove(0, Infinity);
+                await waitForRemove();
+            } catch (err) {
+                console.warn("Remove failed or skipped:", err);
+            }
+
+            // Now fetch and append fresh chunks
+            await chunkLoader.current.startUpdating(newTime);
+
             setProgressTime(newTime);
-            isSeeking.current = false
-            console.log(audioElement.current)
-            await audioElement.current.play()
-        }
+            isSeeking.current = false;
 
+            // Try playing
+            try {
+                audioElement.current.currentTime = newTime + 0.1;
+            } catch (err) {
+                console.warn("Playback failed:", err);
+            }
+        }
     };
 
-    const waitForSourceBufferUpdateEnd = () => {
-        return new Promise(resolve => {
-            if (!sourceBufferRef.current.updating) {
-                resolve();
-            } else {
-                const onUpdateEnd = () => {
-                    sourceBufferRef.current.removeEventListener("updateend", onUpdateEnd);
-                    resolve();
-                };
-                sourceBufferRef.current.addEventListener("updateend", onUpdateEnd);
-            }
-        });
-    }
 
     const isSeekable = (desiredTime) => {
         for (let i = 0; i < sourceBufferRef.current.buffered.length; i++) {
@@ -217,8 +245,20 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
 
     const handleMouseLeave = () => {
         setHoverTime(null);
+
+        logBufferedRanges(sourceBufferRef.current)
     };
 
+    const logBufferedRanges = (sourceBuffer) => {
+        if (!sourceBuffer) return;
+
+        const buffered = sourceBuffer.buffered;
+        for (let i = 0; i < buffered.length; i++) {
+            const start = TimeFormatter.formatTime(buffered.start(i));
+            const end = TimeFormatter.formatTime(buffered.end(i));
+            console.log(`Buffered range ${i}: ${start} → ${end}`);
+        }
+    };
     return (
         <div
             className="w-14 h-1/3 flex-none flex flex-col items-center bg-gray-800 text-white p-4 rounded-2xl shadow-lg w-96">

@@ -6,7 +6,7 @@ class ChunkLoader{
     currentFetchOffset = 0
     chunksEndReached = false
     static CHUNK_SIZE = 1024 * 512; // 512 KB
-    static ALLOWED_CHUNKS_NUMBER = 10;
+    static ALLOWED_CHUNKS_NUMBER = 2;
     tryEndStream
     progress
 
@@ -22,13 +22,14 @@ class ChunkLoader{
     }
 
     loadNextChunk = async () => {
+        if(this.chunksEndReached) return
         console.log(this.progress)
         const chunkStart = this.currentFetchOffset;
         const chunkEnd = Math.min(chunkStart + ChunkLoader.CHUNK_SIZE - 1, this.progress.current.totalAudioBytes - 1); // prevent overflow
 
         try {
             const res = await MusicBroker.fetchChunk(this.audioUrl, chunkStart, chunkEnd)
-            console.log(`bytes=${chunkStart}-${chunkEnd}`)
+            console.log(`bytes=${chunkStart}-${chunkEnd} of ${this.progress.current.totalAudioBytes - 1}`);
 
             if (!res.ok || res.status === 416) {
                 this.tryEndStream();
@@ -60,9 +61,10 @@ class ChunkLoader{
         return this.chunksRemainingToPlay() < ChunkLoader.ALLOWED_CHUNKS_NUMBER;
     }
 
-    endCurrentLoading = () => {
+    endCurrentLoading = async () => {
         this.currentFetchOffset = this.progress.current.bytesPlayed()
         this.chunksEndReached = true;
+        await new Promise((resolve) => setTimeout(resolve, 0))
     }
 
     waitUntil = async (conditionFn, interval = 5000) => {
@@ -83,10 +85,9 @@ class ChunkLoader{
         this.currentFetchOffset = this.findBytePositionFromDuration(currentTime)
         const chunkStart = this.currentFetchOffset
         const chunkEnd = Math.min(chunkStart + ChunkLoader.CHUNK_SIZE - 1, this.progress.current.totalAudioBytes - 1); // prevent overflow
-
+        console.log(`-- updating bytes=${chunkStart}-${chunkEnd} of ${this.progress.current.totalAudioBytes - 1}`);
         try {
             const res = await MusicBroker.fetchChunk(this.audioUrl, chunkStart, chunkEnd)
-            // console.log(`updated bytes=${chunkStart}-${chunkEnd}`)
 
             if (!res.ok || res.status === 416) {
                 this.tryEndStream();
@@ -117,8 +118,16 @@ class ChunkLoader{
     }
 
     findBytePositionFromDuration = (currentDuration) => {
-        return Math.trunc(Math.max((currentDuration / this.progress.current.duration) * this.progress.current.totalAudioBytes - 10000, 0));
-    }
+        const { duration, totalAudioBytes } = this.progress.current;
+        const CHUNK_SIZE = ChunkLoader.CHUNK_SIZE;
+
+        const rawPosition = (currentDuration / duration) * totalAudioBytes;
+
+        // Align to nearest lower CHUNK_SIZE boundary
+        const alignedPosition = Math.floor(rawPosition / CHUNK_SIZE) * CHUNK_SIZE;
+
+        return Math.max(alignedPosition, 0);
+    };
 
 }
 export default ChunkLoader;
