@@ -35,8 +35,9 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
 
         const update = () => {
             if(isSeeking.current) return
+            console.log("Update's work at ", audio.currentTime, progressObject)
             setProgressTime(audio.currentTime);
-            progressObject.current.changeProgress(audio.currentTime);
+            progressObject.current.currentSeconds = audio.currentTime
             if (songLoaded.current && progressObject.current?.ended()) {
                 songLoaded.current = false
                 setNext()
@@ -61,7 +62,21 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
             .then(() => {
 
                 mediaSourceRef.current = new MediaSource;
-                audioElement.current.src = URL.createObjectURL(mediaSourceRef.current);
+                audioElement.current.src = URL.createObjectURL(mediaSourceRef.current);// Common media events for <audio> (you can add more as needed)
+                const audioEvents = [
+                    'loadstart', 'suspend', 'abort', 'error', 'emptied',
+                    'stalled', 'loadedmetadata', 'loadeddata', 'canplay',
+                    'canplaythrough', 'playing', 'waiting', 'seeking', 'seeked',
+                    'ended', 'durationchange', 'timeupdate', 'play', 'pause',
+                    'ratechange', 'volumechange'
+                ];
+
+// Attach listeners dynamically
+                audioEvents.forEach(event => {
+                    audioElement.current.addEventListener(event, e => {
+                        console.log(`🎵 [${e.type}]`, e);
+                    });
+                });
 
                 mediaSourceRef.current.addEventListener('sourceopen', () => {
                     configureMediaplayerWithAudioChunks(audioUrl)
@@ -103,7 +118,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         console.log("Updateend fired")
         if (moreChunksToLoad()) {
             await chunkLoader.current.loadNextChunk()
-        } else {
+        } else if(chunksEndReached.current) {
             tryEndStream()
         }
     }
@@ -113,6 +128,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
     }
 
     const tryEndStream = () => {
+        console.log("-------><<<<<<<holy tryed end stream")
         if (!sourceBufferRef.current.updating) {
             mediaSourceRef.current.endOfStream();
             chunksEndReached.current = true;
@@ -136,10 +152,12 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         const newTime = (clickX / rect.width) * progressObject.current.duration;
 
         if (isSeekable(newTime)) {
+            isSeeking.current = false
             audioElement.current.currentTime = newTime;
         } else {
             console.log("Loading from new update --->");
             isSeeking.current = true;
+            setIsPlaying(false)
 
             await chunkLoader.current.endCurrentLoading();
 
@@ -192,15 +210,31 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
                 console.warn("Remove failed or skipped:", err);
             }
 
+            progressObject.current.currentSeconds = newTime;
+            await new Promise(resolve => setTimeout(resolve, 0));
             // Now fetch and append fresh chunks
             await chunkLoader.current.startUpdating(newTime);
 
+            //This was the only FIX that I needed -> Man I missed you a lot
+            /** I should really think, asynchronous code -> StartUpdating does not mean, sourceBuffer is appended completely -> Actually, fetch was completed -> And boom
+             * This piece of code at line 222 deserves award -> It forced me take many different paths -> like console logging audio events -> I should have done it from the start.
+             */
+            await waitForRemove();
             setProgressTime(newTime);
-            isSeeking.current = false;
+            // isSeeking.current = false;
 
             // Try playing
             try {
-                audioElement.current.currentTime = newTime;
+                console.log(sourceBufferRef.current.buffered.start(0));
+                audioElement.current.currentTime = sourceBufferRef.current.buffered.start(0)
+                audioElement.current.play()
+                isSeeking.current = false
+                audioElement.current.addEventListener("canplay", ()=>{
+                    console.log("->>>>>>>>>Fired here")
+                    audioElement.current.currentTime = newTime;
+                    isSeeking.current = false
+                }, { once: true });
+                setIsPlaying(true)
             } catch (err) {
                 console.warn("Playback failed:", err);
             }
@@ -259,6 +293,7 @@ const MusicPlayer = ({audioUrl, setNext, setPrev}) => {
         setHoverTime(null);
 
         logBufferedRanges(sourceBufferRef.current)
+        console.log("Mouse progress? -", progressObject.current)
     };
 
     const logBufferedRanges = (sourceBuffer) => {

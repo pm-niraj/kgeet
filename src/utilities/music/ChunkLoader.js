@@ -25,7 +25,7 @@ class ChunkLoader{
 
     loadNextChunk = async () => {
         if(this.chunksEndReached) return
-        console.log(this.progress)
+        console.log("Load chunk ", this.progress)
         const chunkStart = this.currentFetchOffset;
         const chunkEnd = Math.min(chunkStart + ChunkLoader.CHUNK_SIZE - 1, this.progress.current.totalAudioBytes - 1); // prevent overflow
 
@@ -85,8 +85,8 @@ class ChunkLoader{
         });
     };
     startUpdating = async (currentTime) => {
+        console.log("Update chunk ", this.progress)
         this.queue.current = []
-        this.progress.current.currentSeconds = currentTime;
         this.currentFetchOffset = this.findBytePositionFromDuration(currentTime)
         const chunkStart = this.currentFetchOffset
         const chunkEnd = Math.min(chunkStart + ChunkLoader.CHUNK_SIZE - 1, this.progress.current.totalAudioBytes - 1); // prevent overflow
