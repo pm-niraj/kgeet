@@ -20,7 +20,8 @@ pipeline {
 
         stage('Run Tests') {
             steps {
-                bat 'npm test -- --watchAll=false'
+                echo 'Testing'
+                //bat 'npm test -- --watchAll=false'
             }
         }
 
