@@ -6,7 +6,9 @@ pipeline {
     }
 
     tools {
-        nodejs 'NodeJS_18' // Name defined in Jenkins Global Tool Configuration
+    'org.jenkinsci.plugins.nodejs.tools.NodeJSInstallation' 'NodeJS_18'
+    }
+
     }
 
     stages {
