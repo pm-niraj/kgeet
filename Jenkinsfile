@@ -9,8 +9,6 @@ pipeline {
     'org.jenkinsci.plugins.nodejs.tools.NodeJSInstallation' 'NodeJS_18'
     }
 
-    }
-
     stages {
         stage('Checkout') {
             steps {
