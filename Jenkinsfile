@@ -5,10 +5,6 @@ pipeline {
         NODE_ENV = 'production'
     }
 
-    tools {
-    'org.jenkinsci.plugins.nodejs.tools.NodeJSInstallation' 'NodeJS_18'
-    }
-
     stages {
         stage('Checkout') {
             steps {
