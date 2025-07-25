@@ -1,12 +1,20 @@
-* * *
-
-``# kgeet-front ## Overview **kgeet-front** is the React frontend application for the `kgeet` audio service. It provides a user-friendly interface to submit video URLs (e.g., YouTube), request audio downloads, and stream the audio directly in the browser with smooth playback.
+## Overview
+**kgeet-front** is the React frontend application for the `kgeet` audio service. It provides a user-friendly interface to submit video URLs (e.g., YouTube), request audio downloads, and stream the audio directly in the browser with smooth playback.
 
 The app interacts with the `kgeet-back` Spring Boot backend to: - Submit download requests - List available audio files - Stream audio with caching for seamless playback
 
---- ## Features - Simple and intuitive UI for submitting video URLs - List downloaded audio files with playback controls - Seamless audio streaming from backend - Automatically handles download status and audio availability - Clean design with responsive layout
+## Features
+- Simple and intuitive UI for submitting video URLs
+- List downloaded audio files with playback controls
+- Seamless audio streaming from backend
+- Automatically handles download status and audio availability
+- Clean design with responsive layout
 
---- ## Prerequisites - Node.js (v18+ recommended) - npm or yarn - `kgeet-back` backend running on `localhost:8083` --- ## Getting Started ### 1. Clone the repository ```bash
+## Prerequisites
+- Node.js (v18+ recommended)
+- npm or yarn - `kgeet-back` backend running on `localhost:8083` 
+## Getting Started 
+### 1. Clone the repository ```bash
 git clone https://github.com/your-username/kgeet-front.git
 cd kgeet-front`` 
 
